@@ -1,5 +1,6 @@
 import random
 import csv
+import pickle
 import os
 import glob
 from typing import List, Dict, Set, Tuple
@@ -52,6 +53,15 @@ class Graph:
         dens = self.m / max_edges if max_edges > 0 else 0
         print(f"Density: {dens:.4f}")
         print("---------------------------")
+
+    def save_to_bin(self, folder_path: str):
+        """ Saves the current Graph object state to a binary file. """
+        filename = f"{self.name}.bin"
+        full_path = os.path.join(folder_path, filename)
+
+        with open(full_path, 'wb') as f:
+            pickle.dump(self, f)
+        print(f"[IO] Graph saved to: {full_path}")
 
 
 # ==========================================
@@ -172,60 +182,99 @@ class GraphLoader:
         g.set_weights(GraphLoader.SEED)
         return g
 
+    @staticmethod
+    def load_from_bin(filepath: str) -> Graph:
+        """ Loads a pre-processed Graph object from a binary file. """
+        with open(filepath, 'rb') as f:
+            g = pickle.load(f)
+        print(f"[IO] Loaded {g.name} (n={g.n}, m={g.m}) from disk.")
+        return g
+
 
 # ==========================================
-# Zona de Testes (Main Atualizado)
+# Phase 1.5: Compiler (Main) - FINAL PATH FIX
 # ==========================================
 if __name__ == "__main__":
 
-    # --- CONFIGURAÇÃO DE CAMINHOS ---
-    # Ajusta isto para onde puseste as pastas!
-    #BASE_PATH = "../data/raw"
-    MICRO_FOLDER = os.path.join("/home/eduardo/Documents/computacional/aa/Project2/data/local_graphs")  # Pasta dos teus GMLs antigos
+    # 1. SETUP DE CAMINHOS ABSOLUTOS/RELATIVOS
+    # Estamos em .../Project2/src
+    # Queremos ir para .../Project2/data
 
-    print(">>> INICIANDO VALIDAÇÃO DOS GRAFOS <<<\n")
+    BASE_DATA = "../data"
+    BASE_RAW = os.path.join(BASE_DATA, "raw")
 
-    # 1. CARREGAR MICROS (Iterar sobre todos os .gml na pasta)
-    if os.path.exists(MICRO_FOLDER):
-        gml_files = glob.glob(os.path.join(MICRO_FOLDER, "*.gml"))
-        print(f"Encontrados {len(gml_files)} ficheiros Micro GML.")
+    # Pastas Específicas DENTRO de raw
+    PATH_MICRO = os.path.join(BASE_RAW, "local_graphs")
+    PATH_FACEBOOK = os.path.join(BASE_RAW, "facebook")
+    PATH_FOOTBALL = os.path.join(BASE_RAW, "football")
+
+    # Pasta de Destino (ao lado de raw, para não misturar)
+    PATH_PROCESSED = os.path.join(BASE_DATA, "processed")
+
+    print(f"DEBUG: Working Directory: {os.getcwd()}")
+    print(f"DEBUG: Raw Data Root: {os.path.abspath(BASE_RAW)}")
+
+    # Criar pasta processed
+    os.makedirs(PATH_PROCESSED, exist_ok=True)
+
+    print("\n>>> COMPILING GRAFOS (RAW -> PROCESSED) <<<\n")
+
+    # ---------------------------------------------------------
+    # 1. COMPILE MICRO (Folder: data/raw/local_graphs)
+    # ---------------------------------------------------------
+    if os.path.exists(PATH_MICRO):
+        gml_files = glob.glob(os.path.join(PATH_MICRO, "*.gml"))
+
+        if not gml_files:
+            print(f"[WARNING] Pasta '{PATH_MICRO}' existe mas está vazia de .gml!")
 
         for fpath in sorted(gml_files):
             try:
-                # O nome do grafo fica o nome do ficheiro (ex: graph_30_0.125.gml)
                 micro = GraphLoader.load_gml(fpath)
-                micro.get_stats()
+                micro.save_to_bin(PATH_PROCESSED)
             except Exception as e:
-                print(f"Erro a ler {os.path.basename(fpath)}: {e}")
+                print(f"[ERROR] {os.path.basename(fpath)}: {e}")
     else:
-        print(f"[AVISO] Pasta não encontrada: {MICRO_FOLDER}")
+        print(f"[ERROR] Pasta não encontrada: {os.path.abspath(PATH_MICRO)}")
 
-    # 2. FOOTBALL (GML)
-    try:
-        path = os.path.join("/home/eduardo/Documents/computacional/aa/Project2/data/football/football.gml")
-        if os.path.exists(path):
-            fb = GraphLoader.load_gml(path, "Football")  # Usa o mesmo parser agora!
-            fb.get_stats()
+    # ---------------------------------------------------------
+    # 2. COMPILE FOOTBALL (Folder: data/raw/football)
+    # ---------------------------------------------------------
+    if os.path.exists(PATH_FOOTBALL):
+        football_files = glob.glob(os.path.join(PATH_FOOTBALL, "*.gml"))
+        if football_files:
+            # Assume que o primeiro gml é o correto
+            fpath = football_files[0]
+            try:
+                # Extra: Tenta usar o nome do ficheiro como nome do grafo
+                name = os.path.splitext(os.path.basename(fpath))[0]
+                fb = GraphLoader.load_gml(fpath, name)
+                fb.save_to_bin(PATH_PROCESSED)
+            except Exception as e:
+                print(f"[ERROR] Football logic: {e}")
         else:
-            print(f"[AVISO] Football não encontrado: {path}")
-    except Exception as e:
-        print(f"Erro no Football: {e}")
+            print(f"[ERROR] Nenhum .gml encontrado dentro de {PATH_FOOTBALL}")
+    else:
+        print(f"[ERROR] Pasta não encontrada: {os.path.abspath(PATH_FOOTBALL)}")
 
-    # 3. FACEBOOK
-    try:
-        path = os.path.join("/home/eduardo/Documents/computacional/aa/Project2/data/facebook/3980.edges")
-        if os.path.exists(path):
-            face = GraphLoader.load_facebook_edges(path)
-            face.get_stats()
-        else:
-            print(f"[AVISO] Facebook não encontrado: {path}")
-    except Exception as e:
-        print(f"Erro no Facebook: {e}")
+    # ---------------------------------------------------------
+    # 3. COMPILE FACEBOOK (Folder: data/raw/facebook)
+    # ---------------------------------------------------------
+    target_fb = os.path.join(PATH_FACEBOOK, "facebook_combined.txt")
+
+    if os.path.exists(target_fb):
+        try:
+            face = GraphLoader.load_facebook_edges(target_fb)
+            face.save_to_bin(PATH_PROCESSED)
+        except Exception as e:
+            print(f"[ERROR] Facebook logic: {e}")
+    else:
+        print(f"[ERROR] Ficheiro 'facebook_combined.txt' não encontrado em: {os.path.abspath(PATH_FACEBOOK)}")
 
     # 4. TWITCH
     # (Comentado para não encher o terminal, retirar se quiseres testar já)
     # try:
-    #     path = os.path.join(BASE_PATH, "large_twitch_edges.csv")
+    #     path = os.path.join("/home/eduardo/Documents/computacional/Project2/data/twitch_gamers/large_twitch_edges.csv")
     #     if os.path.exists(path):
     #         twitch = GraphLoader.load_twitch_csv(path)
     #         twitch.get_stats()
