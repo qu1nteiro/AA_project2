@@ -7,7 +7,6 @@ import seaborn as sns
 import networkx as nx
 
 # --- IMPORTS DO TEU PROJETO ---
-# O "Graph" aqui é fundamental para o pickle funcionar corretamente
 from graph_loader import GraphLoader, Graph
 from pure_random import PureRandomSolver
 from randomized_greedy import RandomizedGreedySolver
@@ -16,39 +15,41 @@ import project1_greedy
 import project1_exhaustive
 
 # ==============================================================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÃO GLOBAL
 # ==============================================================================
-# O ficheiro do grafo que queres testar
-GRAPH_FILE = "../data/processed/football.bin"
-TIME_LIMIT = 2.0  # Segundos de corrida
+DEFAULT_GRAPH_FILE = "../data/processed/football.bin"
+TIME_LIMIT = 2.0
 OUTPUT_CSV = "../results/race_data.csv"
 OUTPUT_PLOT = "../results/convergence_plot.png"
 
 
 # ==============================================================================
-# 1. FUNÇÃO DE EXECUÇÃO E LOGGING
+# 1. FUNÇÃO DE EXECUÇÃO
 # ==============================================================================
 def run_race():
-    # Carregar Grafo
-    if not os.path.exists(GRAPH_FILE):
-        print(f"ERRO: Grafo não encontrado em {GRAPH_FILE}")
-        # Tenta fallback local caso estejas a correr na mesma pasta
+    # 1. Resolver o caminho do ficheiro (Sem tocar na global)
+    target_file = DEFAULT_GRAPH_FILE
+
+    if not os.path.exists(target_file):
+        print(f"AVISO: Grafo não encontrado em {target_file}")
+        # Tenta fallback local
         if os.path.exists("football.bin"):
-            GRAPH_FILE = "football.bin"
+            print(">> Usando fallback: football.bin na pasta local.")
+            target_file = "football.bin"
         else:
+            print("ERRO CRÍTICO: Não foi possível encontrar o ficheiro do grafo.")
             return None
 
-    g = GraphLoader.load_from_bin(GRAPH_FILE)
+    # 2. Carregar
+    g = GraphLoader.load_from_bin(target_file)
     print(f"--- A INICIAR CORRIDA: {g.name} (N={g.n}) ---")
 
-    # Lista para guardar os dados: [Algoritmo, Tempo, Peso]
     race_data = []
 
     # -------------------------------------------------
-    # A. GREEDY (P1) - A Referência (Linha Base)
+    # A. GREEDY (P1)
     # -------------------------------------------------
     print(">> Correndo Greedy (P1)...")
-    # Converter para NetworkX (necessário para P1)
     G_nx = nx.Graph()
     for i in range(g.n): G_nx.add_node(i, weight=g.weights[i])
     for u in range(g.n):
@@ -57,14 +58,12 @@ def run_race():
 
     t0 = time.time()
     _, w_greedy, _ = project1_greedy.find_dominating_set_greedy(G_nx)
-    t_greedy = time.time() - t0
-
-    # Adiciona ponto inicial e final para criar uma linha horizontal no gráfico
+    # Registar pontos para linha reta
     race_data.append({"Algorithm": "Greedy (P1)", "Time": 0, "Weight": w_greedy})
     race_data.append({"Algorithm": "Greedy (P1)", "Time": TIME_LIMIT, "Weight": w_greedy})
 
     # -------------------------------------------------
-    # B. EXHAUSTIVE (P1) - O "Chão" (Só se N for pequeno)
+    # B. EXHAUSTIVE (P1)
     # -------------------------------------------------
     if g.n <= 25:
         print(">> Correndo Exhaustive (P1)...")
@@ -75,17 +74,14 @@ def run_race():
         print(f">> Exhaustive (P1) ignorado (N={g.n} > 25).")
 
     # -------------------------------------------------
-    # C. ALGORITMOS P2 (Com Callback)
+    # C. ALGORITMOS P2
     # -------------------------------------------------
-
-    # Função auxiliar que os algoritmos vão chamar quando melhorarem
     def callback(algo_name, t, w):
         race_data.append({"Algorithm": algo_name, "Time": t, "Weight": w})
 
     # 1. Pure Random
     print(">> Correndo Pure Random (P2)...")
     s1 = PureRandomSolver(g)
-    # REMOVIDO: A chamada manual que dava erro. O solve já trata disto.
     s1.solve(TIME_LIMIT, trace_callback=lambda t, w: callback("Pure Random (P2)", t, w))
 
     # 2. Randomized Greedy
@@ -98,57 +94,49 @@ def run_race():
     s3 = SimulatedAnnealingSolver(g)
     s3.solve(TIME_LIMIT, trace_callback=lambda t, w: callback("Sim Annealing (P2)", t, w))
 
-    # Salvar CSV Bruto
+    # Salvar
     df = pd.DataFrame(race_data)
-
-    # Criar pasta results se não existir
     os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
-
     df.to_csv(OUTPUT_CSV, index=False)
     print(f"Dados guardados em {OUTPUT_CSV}")
     return df
 
 
 # ==============================================================================
-# 2. FUNÇÃO DE PLOTAGEM
+# 2. PLOT
 # ==============================================================================
 def plot_convergence(df):
-    plt.figure(figsize=(12, 7))
-
-    # Estilo
+    plt.figure(figsize=(10, 6))
     sns.set_style("whitegrid")
 
+    # Paleta de cores vibrante
     algos = df['Algorithm'].unique()
-    # Usar uma paleta distinta
     colors = sns.color_palette("bright", n_colors=len(algos))
 
     for i, algo in enumerate(algos):
         subset = df[df['Algorithm'] == algo].sort_values("Time")
+        if subset.empty: continue
 
-        if subset.empty:
-            continue
-
-        # Adiciona um ponto final no tempo limite para a linha ir até ao fim do gráfico
+        # Estender linha final
         last_row = subset.iloc[-1].copy()
-        last_row['Time'] = 2.0  # Força fim no limite
+        last_row['Time'] = 2.0
         subset = pd.concat([subset, pd.DataFrame([last_row])], ignore_index=True)
 
-        # Plot "step-post" cria o efeito de escada perfeito para otimização discreta
+        # Plot em degrau
         plt.step(subset['Time'], subset['Weight'], where='post', label=algo, linewidth=2, color=colors[i])
 
-    plt.title('Convergence Analysis: Performance Over Time (2s)', fontsize=16)
-    plt.xlabel('Time (seconds)', fontsize=12)
-    plt.ylabel('Best Solution Weight (Minimization)', fontsize=12)
+    plt.title('Convergence Analysis: "The Race" (Football Graph)', fontsize=14)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Best Solution Weight')
     plt.xlim(0, 2.0)
-    plt.legend(title="Algorithm", loc='upper right')
-    plt.grid(True, which='both', linestyle='--', alpha=0.5)
+    plt.legend(loc='upper right')
 
     print(f"Guardando gráfico em {OUTPUT_PLOT}...")
     plt.savefig(OUTPUT_PLOT, dpi=300)
-    # plt.show() # Descomentar se tiveres ambiente gráfico
+    # plt.show()
 
 
 if __name__ == "__main__":
     df = run_race()
-    if df is not None and not df.empty:
+    if df is not None:
         plot_convergence(df)
