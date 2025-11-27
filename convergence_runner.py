@@ -7,7 +7,7 @@ import seaborn as sns
 import networkx as nx
 
 # --- IMPORTS DO TEU PROJETO ---
-# Certifica-te que estes ficheiros existem e estão atualizados
+# O "Graph" aqui é fundamental para o pickle funcionar corretamente
 from graph_loader import GraphLoader, Graph
 from pure_random import PureRandomSolver
 from randomized_greedy import RandomizedGreedySolver
@@ -18,7 +18,7 @@ import project1_exhaustive
 # ==============================================================================
 # CONFIGURAÇÃO
 # ==============================================================================
-# O ficheiro do grafo que queres testar (ex: Football ou um grande do Facebook)
+# O ficheiro do grafo que queres testar
 GRAPH_FILE = "../data/processed/football.bin"
 TIME_LIMIT = 2.0  # Segundos de corrida
 OUTPUT_CSV = "../results/race_data.csv"
@@ -32,7 +32,11 @@ def run_race():
     # Carregar Grafo
     if not os.path.exists(GRAPH_FILE):
         print(f"ERRO: Grafo não encontrado em {GRAPH_FILE}")
-        return
+        # Tenta fallback local caso estejas a correr na mesma pasta
+        if os.path.exists("football.bin"):
+            GRAPH_FILE = "football.bin"
+        else:
+            return None
 
     g = GraphLoader.load_from_bin(GRAPH_FILE)
     print(f"--- A INICIAR CORRIDA: {g.name} (N={g.n}) ---")
@@ -81,16 +85,12 @@ def run_race():
     # 1. Pure Random
     print(">> Correndo Pure Random (P2)...")
     s1 = PureRandomSolver(g)
-    # Regista o ponto inicial (para o gráfico não começar vazio)
-    first_sol = s1.generate_random_solution()  # Assumindo que tens este método ou similar
-    if first_sol: callback("Pure Random (P2)", 0, first_sol.weight)
-
+    # REMOVIDO: A chamada manual que dava erro. O solve já trata disto.
     s1.solve(TIME_LIMIT, trace_callback=lambda t, w: callback("Pure Random (P2)", t, w))
 
     # 2. Randomized Greedy
     print(">> Correndo Randomized Greedy (P2)...")
     s2 = RandomizedGreedySolver(g)
-    # Ponto inicial aproximado (opcional)
     s2.solve(TIME_LIMIT, k_best=5, trace_callback=lambda t, w: callback("Rand Greedy (P2)", t, w))
 
     # 3. Simulated Annealing
@@ -100,6 +100,10 @@ def run_race():
 
     # Salvar CSV Bruto
     df = pd.DataFrame(race_data)
+
+    # Criar pasta results se não existir
+    os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
+
     df.to_csv(OUTPUT_CSV, index=False)
     print(f"Dados guardados em {OUTPUT_CSV}")
     return df
@@ -114,32 +118,34 @@ def plot_convergence(df):
     # Estilo
     sns.set_style("whitegrid")
 
-    # Desenhar linhas "em escada" (step plot)
-    # Usamos o seaborn lineplot mas para dados discretos o 'step' do matplotlib é melhor,
-    # mas o lineplot gere bem as cores. Vamos usar lineplot com drawstyle (se suportado) ou loop manual.
-
     algos = df['Algorithm'].unique()
+    # Usar uma paleta distinta
     colors = sns.color_palette("bright", n_colors=len(algos))
 
     for i, algo in enumerate(algos):
         subset = df[df['Algorithm'] == algo].sort_values("Time")
+
+        if subset.empty:
+            continue
 
         # Adiciona um ponto final no tempo limite para a linha ir até ao fim do gráfico
         last_row = subset.iloc[-1].copy()
         last_row['Time'] = 2.0  # Força fim no limite
         subset = pd.concat([subset, pd.DataFrame([last_row])], ignore_index=True)
 
+        # Plot "step-post" cria o efeito de escada perfeito para otimização discreta
         plt.step(subset['Time'], subset['Weight'], where='post', label=algo, linewidth=2, color=colors[i])
 
     plt.title('Convergence Analysis: Performance Over Time (2s)', fontsize=16)
     plt.xlabel('Time (seconds)', fontsize=12)
     plt.ylabel('Best Solution Weight (Minimization)', fontsize=12)
     plt.xlim(0, 2.0)
-    plt.legend(title="Algorithm")
+    plt.legend(title="Algorithm", loc='upper right')
+    plt.grid(True, which='both', linestyle='--', alpha=0.5)
 
     print(f"Guardando gráfico em {OUTPUT_PLOT}...")
     plt.savefig(OUTPUT_PLOT, dpi=300)
-    plt.show()
+    # plt.show() # Descomentar se tiveres ambiente gráfico
 
 
 if __name__ == "__main__":
