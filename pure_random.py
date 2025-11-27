@@ -76,10 +76,14 @@ class PureRandomSolver:
 
         return Solution(current_nodes, current_weight)
 
-    def solve(self, max_time_seconds: float) -> Solution:
+    def solve(self, max_time_seconds: float, trace_callback=None) -> Solution:
         """
         Loop principal que corre tentativas até o tempo acabar.
         Requisito: "Deciding when to stop testing... after computation time"
+
+        Args:
+            max_time_seconds: Tempo limite.
+            trace_callback: Função (tempo, peso) chamada quando encontramos uma melhoria.
         """
         start_time = time.time()
         self.solutions_tested = 0
@@ -106,7 +110,12 @@ class PureRandomSolver:
             # 3. Atualizar Melhor Solução
             if (self.best_solution is None) or (candidate.weight < self.best_solution.weight):
                 self.best_solution = candidate
-                # print(f"  > New Best: Weight {candidate.weight} (at {time.time()-start_time:.3f}s)")
+
+                # --- HOOK PARA O GRÁFICO DE CONVERGÊNCIA ---
+                if trace_callback:
+                    elapsed = time.time() - start_time
+                    trace_callback(elapsed, candidate.weight)
+                # -------------------------------------------
 
         return self.best_solution
 
@@ -117,37 +126,35 @@ class PureRandomSolver:
 if __name__ == "__main__":
 
     # 1. Definir caminho para o grafo processado (Football é o 'Medium')
-    # Ajusta o caminho se necessário!
     processed_path = "../data/processed/football.bin"
 
     if not os.path.exists(processed_path):
         print(f"Error: File not found at {processed_path}")
-        print("Run 'graph_loader.py' first!")
-        sys.exit(1)
+        # Tenta fallback para diretoria atual se correr na mesma pasta
+        processed_path = "football.bin"
 
-    # 2. Carregar Grafo
-    print(f"--- Loading Graph from {processed_path} ---")
-    my_graph = GraphLoader.load_from_bin(processed_path)
+    if os.path.exists(processed_path):
+        # 2. Carregar Grafo
+        print(f"--- Loading Graph from {processed_path} ---")
+        my_graph = GraphLoader.load_from_bin(processed_path)
 
-    # 3. Inicializar Solver
-    solver = PureRandomSolver(my_graph)
+        # 3. Inicializar Solver
+        solver = PureRandomSolver(my_graph)
 
-    # 4. Correr o Algoritmo (2 segundos)
-    final_sol = solver.solve(max_time_seconds=2.0)
+        # 4. Correr o Algoritmo (2 segundos)
+        # Nota: trace_callback=None por defeito, logo não crasha aqui
+        final_sol = solver.solve(max_time_seconds=2.0)
 
-    # 5. Apresentar Resultados
-    print("\n" + "=" * 40)
-    print(f"FINAL RESULT FOR: {my_graph.name}")
-    print("=" * 40)
-    print(f"Strategy:        Pure Random")
-    print(f"Time Limit:      2.0s")
-    print(f"Solutions Tried: {solver.solutions_tested}")
-    print(f"Unique Solutions:{len(solver.history_hashes)}")
-    print("-" * 40)
-    if final_sol:
-        print(f"BEST WEIGHT:     {final_sol.weight}")
-        print(f"SIZE (Nodes):    {len(final_sol.nodes)}")
-        # print(f"Nodes:           {sorted(list(final_sol.nodes))}")
-    else:
-        print("No solution found (Check logic).")
-    print("=" * 40)
+        # 5. Apresentar Resultados
+        print("\n" + "=" * 40)
+        print(f"FINAL RESULT FOR: {my_graph.name}")
+        print("=" * 40)
+        print(f"Strategy:        Pure Random")
+        print(f"Time Limit:      2.0s")
+        print(f"Solutions Tried: {solver.solutions_tested}")
+        if final_sol:
+            print(f"BEST WEIGHT:     {final_sol.weight}")
+            print(f"SIZE (Nodes):    {len(final_sol.nodes)}")
+        else:
+            print("No solution found.")
+        print("=" * 40)
