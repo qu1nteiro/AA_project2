@@ -151,11 +151,15 @@ class SimulatedAnnealingSolver:
     # ------------------------------------------------------
     # Manager: Main Solver Loop
     # ------------------------------------------------------
-    def solve(self, max_time_seconds: float) -> Solution:
+    def solve(self, max_time_seconds: float, trace_callback=None) -> Solution:
         """
         Runs the Annealing process.
         Uses a 'Restart' strategy: if the system cools down too much
         but time remains, it restarts from a new random point.
+
+        Args:
+            max_time_seconds: Tempo limite.
+            trace_callback: Função (tempo, peso) para log de convergência.
         """
         start_time = time.time()
         self.solutions_tested = 0
@@ -171,6 +175,9 @@ class SimulatedAnnealingSolver:
             # Set global best
             if self.best_solution_overall is None or current_sol.weight < self.best_solution_overall.weight:
                 self.best_solution_overall = current_sol
+                # Log inicial (caso a primeira solução aleatória já seja boa)
+                if trace_callback:
+                    trace_callback(time.time() - start_time, current_sol.weight)
 
             # 2. Temperature Setup
             # Heuristic: Start T at 50% of initial weight to allow some bad moves initially
@@ -219,7 +226,12 @@ class SimulatedAnnealingSolver:
                     # Update Global Best if found
                     if current_sol.weight < self.best_solution_overall.weight:
                         self.best_solution_overall = deepcopy(current_sol)
-                        # print(f"  > New Best (SA): W={current_sol.weight}")
+
+                        # --- HOOK PARA O GRÁFICO DE CONVERGÊNCIA ---
+                        if trace_callback:
+                            elapsed = time.time() - start_time
+                            trace_callback(elapsed, current_sol.weight)
+                        # -------------------------------------------
 
                 # E. Cool Down
                 temperature *= self.alpha
@@ -239,28 +251,32 @@ if __name__ == "__main__":
     processed_path = "../data/processed/football.bin"
 
     if not os.path.exists(processed_path):
-        print(f"Error: File not found at {processed_path}")
-        sys.exit(1)
+        # Fallback local
+        processed_path = "football.bin"
 
-    # Load
-    print(f"--- Loading Graph from {processed_path} ---")
-    my_graph = GraphLoader.load_from_bin(processed_path)
+    if os.path.exists(processed_path):
+        # Load
+        print(f"--- Loading Graph from {processed_path} ---")
+        my_graph = GraphLoader.load_from_bin(processed_path)
 
-    # Initialize
-    solver = SimulatedAnnealingSolver(my_graph)
+        # Initialize
+        solver = SimulatedAnnealingSolver(my_graph)
 
-    # Run (e.g., 2 seconds)
-    final_sol = solver.solve(max_time_seconds=2.0)
+        # Run (e.g., 2 seconds)
+        # trace_callback=None por defeito
+        final_sol = solver.solve(max_time_seconds=2.0)
 
-    # Results
-    print("\n" + "=" * 40)
-    print(f"FINAL RESULT FOR: {my_graph.name}")
-    print("=" * 40)
-    print(f"Strategy:        Simulated Annealing")
-    print(f"Solutions Tried: {solver.solutions_tested}")
-    if final_sol:
-        print(f"BEST WEIGHT:     {final_sol.weight}")
-        print(f"SIZE (Nodes):    {len(final_sol.nodes)}")
+        # Results
+        print("\n" + "=" * 40)
+        print(f"FINAL RESULT FOR: {my_graph.name}")
+        print("=" * 40)
+        print(f"Strategy:        Simulated Annealing")
+        print(f"Solutions Tried: {solver.solutions_tested}")
+        if final_sol:
+            print(f"BEST WEIGHT:     {final_sol.weight}")
+            print(f"SIZE (Nodes):    {len(final_sol.nodes)}")
+        else:
+            print("No solution found.")
+        print("=" * 40)
     else:
-        print("No solution found.")
-    print("=" * 40)
+        print(f"File not found: {processed_path}")

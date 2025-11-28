@@ -77,8 +77,6 @@ class RandomizedGreedySolver:
 
             # --- EVALUATION PHASE ---
             # Evaluate all nodes NOT yet in the solution
-            # (Optimization: We could just iterate nodes_to_cover + their neighbors,
-            # but iterating all is safer for correctness in this phase).
             for node in range(self.graph.n):
                 if node not in current_solution_nodes:
 
@@ -122,10 +120,15 @@ class RandomizedGreedySolver:
 
         return Solution(current_solution_nodes, current_weight)
 
-    def solve(self, max_time_seconds: float, k_best: int = 3) -> Solution:
+    def solve(self, max_time_seconds: float, k_best: int = 3, trace_callback=None) -> Solution:
         """
         Runs the randomized construction multiple times within the time limit.
         Keeps the best result found.
+
+        Args:
+            max_time_seconds: Tempo limite.
+            k_best: Parâmetro de aleatoriedade (Top-K).
+            trace_callback: Função (tempo, peso) chamada quando encontramos melhoria.
         """
         start_time = time.time()
         self.solutions_tested = 0
@@ -149,7 +152,12 @@ class RandomizedGreedySolver:
             # 3. Update Best Solution
             if (self.best_solution is None) or (candidate.weight < self.best_solution.weight):
                 self.best_solution = candidate
-                # print(f"  > [{time.time()-start_time:.3f}s] New Best: W={candidate.weight} (Size {len(candidate.nodes)})")
+
+                # --- HOOK PARA O GRÁFICO DE CONVERGÊNCIA ---
+                if trace_callback:
+                    elapsed = time.time() - start_time
+                    trace_callback(elapsed, candidate.weight)
+                # -------------------------------------------
 
         return self.best_solution
 
@@ -163,35 +171,34 @@ if __name__ == "__main__":
     processed_path = "../data/processed/football.bin"
 
     if not os.path.exists(processed_path):
-        print(f"Error: File not found at {processed_path}")
-        sys.exit(1)
+        # Fallback para execução local
+        processed_path = "football.bin"
 
-    # 2. Load Graph
-    print(f"--- Loading Graph from {processed_path} ---")
-    my_graph = GraphLoader.load_from_bin(processed_path)
+    if os.path.exists(processed_path):
+        # 2. Load Graph
+        print(f"--- Loading Graph from {processed_path} ---")
+        my_graph = GraphLoader.load_from_bin(processed_path)
 
-    # 3. Initialize Solver
-    solver = RandomizedGreedySolver(my_graph)
+        # 3. Initialize Solver
+        solver = RandomizedGreedySolver(my_graph)
 
-    # 4. Run Algorithm
-    # k_best=1 -> Exactly the same as Project 1 (Deterministic)
-    # k_best=5 -> Adds randomness (checks top 5 best nodes)
-    k_value = 5
-    final_sol = solver.solve(max_time_seconds=2.0, k_best=k_value)
+        # 4. Run Algorithm
+        k_value = 5
+        # trace_callback=None por defeito
+        final_sol = solver.solve(max_time_seconds=2.0, k_best=k_value)
 
-    # 5. Output
-    print("\n" + "=" * 40)
-    print(f"FINAL RESULT FOR: {my_graph.name}")
-    print("=" * 40)
-    print(f"Strategy:        Randomized Greedy (k={k_value})")
-    print(f"Time Limit:      2.0s")
-    print(f"Solutions Tried: {solver.solutions_tested}")
-    print(f"Unique Solutions:{len(solver.history_hashes)}")
-    print("-" * 40)
-    if final_sol:
-        print(f"BEST WEIGHT:     {final_sol.weight}")
-        print(f"SIZE (Nodes):    {len(final_sol.nodes)}")
-        # print(f"Nodes:           {sorted(list(final_sol.nodes))}")
+        # 5. Output
+        print("\n" + "=" * 40)
+        print(f"FINAL RESULT FOR: {my_graph.name}")
+        print("=" * 40)
+        print(f"Strategy:        Randomized Greedy (k={k_value})")
+        print(f"Time Limit:      2.0s")
+        print(f"Solutions Tried: {solver.solutions_tested}")
+        if final_sol:
+            print(f"BEST WEIGHT:     {final_sol.weight}")
+            print(f"SIZE (Nodes):    {len(final_sol.nodes)}")
+        else:
+            print("No solution found.")
+        print("=" * 40)
     else:
-        print("No solution found.")
-    print("=" * 40)
+        print(f"File not found: {processed_path}")
